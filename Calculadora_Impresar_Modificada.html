@@ -1,0 +1,268 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calculadora Impresar</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Roboto', sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f3f4f6;
+      color: #111;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    label, input, select {
+      display: block;
+      margin: 0.5rem 0;
+      width: 100%;
+    }
+    input[type="checkbox"] {
+      width: auto;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 0.8rem 1.2rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-top: 1rem;
+      cursor: pointer;
+    }
+    .result, .hiddenCosts {
+      margin-top: 2rem;
+      background: #f0f0f0;
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    #historial {
+      margin-top: 2rem;
+    }
+    .historial-item {
+      padding: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 1rem;
+      background: #fff;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      max-width: 600px;
+      max-height: 80%;
+      overflow-y: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    }
+    .modal button.close {
+      background: red;
+      color: white;
+      float: right;
+    }
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+    }
+    .alert {
+      background: #4ade80;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      color: #065f46;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧮 Calculadora Impresar</h1>
+    <label>Nombre del pedido:</label>
+    <input type="text" id="nombrePedido" />
+    <label>Peso de la pieza (g):</label>
+    <input type="number" id="peso" />
+    <label>Precio del kg de filamento (ARS):</label>
+    <input type="number" id="precioFilamento" value="15000" />
+    <label>Valor del kWh (ARS):</label>
+    <input type="number" id="valorKw" value="360" />
+    <label>Valor de impresión fijo (ARS):</label>
+    <input type="number" id="valorImpresion" value="1300" />
+    <label>Horas de impresión:</label>
+    <input type="number" id="horas" value="0" />
+    <label>Minutos de impresión:</label>
+    <input type="number" id="minutos" value="0" />
+    <label>Gastos adicionales:</label>
+    <input type="number" id="envio" placeholder="🚚 Envío (ARS)" />
+    <input type="number" id="empaque" placeholder="📦 Empaque (ARS)" />
+    <label>Porcentaje de ganancia (%):</label>
+    <input type="number" id="ganancia" value="100" />
+    <label>Descuento (%):</label>
+    <input type="number" id="descuento" value="0" />
+    <label><input type="checkbox" id="postprocesado" /> ✨ Incluir postprocesado (+30%)</label>
+    <label><input type="checkbox" id="llavero" /> 🔑 Incluir llavero (+250 ARS)</label>
+
+    <button onclick="calcularPrecio()">🧮 Calcular</button>
+    <button onclick="verPedidos()">📂 Ver Pedidos</button>
+    <div class="result" id="resultado"></div>
+    <div class="hiddenCosts" id="gastoInterno" style="display:none;"></div>
+    <div class="alert" id="alertaGuardado" style="display:none;">✅ Pedido guardado exitosamente.</div>
+
+    <div id="historial">
+      <h3>📊 Historial de cálculos:</h3>
+      <div id="historialLista"></div>
+      <button onclick="borrarHistorial()">🗑️ Borrar historial</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+  <div class="modal" id="modalPedidos">
+    <button class="close" onclick="cerrarModal()">❌ Cerrar</button>
+    <h2>🗂️ Pedidos guardados</h2>
+    <div id="listaPedidos"></div>
+  </div>
+
+  <script>
+    let historial = [];
+    let pedidos = [];
+
+    function calcularPrecio() {
+      const peso = parseFloat(document.getElementById('peso').value);
+      const precioFilamento = parseFloat(document.getElementById('precioFilamento').value);
+      const valorKw = parseFloat(document.getElementById('valorKw').value);
+      const valorImpresion = parseFloat(document.getElementById('valorImpresion').value);
+      const ganancia = parseFloat(document.getElementById('ganancia').value) / 100;
+      const descuento = parseFloat(document.getElementById('descuento').value) / 100;
+      const envio = parseFloat(document.getElementById('envio').value) || 0;
+      const empaque = parseFloat(document.getElementById('empaque').value) || 0;
+      const horas = parseFloat(document.getElementById('horas').value);
+      const minutos = parseFloat(document.getElementById('minutos').value);
+      const postprocesado = document.getElementById('postprocesado').checked;
+      const llavero = document.getElementById('llavero').checked;
+      const nombre = document.getElementById('nombrePedido').value;
+
+      const tiempoHoras = horas + minutos / 60;
+      const tiempoMinutos = horas * 60 + minutos;
+      const consumoEnergia = tiempoHoras * 0.12;
+      const costoEnergia = consumoEnergia * valorKw;
+      const costoFilamento = (peso / 1000) * precioFilamento;
+      const costoFilamento20 = costoFilamento * 1.2;
+      const costoDesgaste = tiempoMinutos * 7;
+
+      let crudo = costoFilamento20 + costoEnergia + costoDesgaste;
+      if (postprocesado) crudo *= 1.3;
+
+      let total = crudo + valorImpresion + empaque + envio;
+      if (llavero) total += 250;
+
+      const totalConGanancia = total * (1 + ganancia) * (1 - descuento);
+      const resto = totalConGanancia % 100;
+      const sugerido = resto >= 80 ? totalConGanancia + (100 - resto) : totalConGanancia - resto;
+
+      const resumenHTML = `
+        <strong>Resumen:</strong><br/>
+        🧪 Filamento: $${costoFilamento.toFixed(2)}<br/>
+        ⚡ Energía: $${costoEnergia.toFixed(2)}<br/>
+        🛠️ Desgaste impresora: $${costoDesgaste.toFixed(2)}<br/>
+        ✨ Postprocesado: ${postprocesado ? 'Sí (+30%)' : 'No'}<br/>
+        🖨️ Valor impresión: $${valorImpresion.toFixed(2)}<br/>
+        🚚 Envío: $${envio.toFixed(2)}<br/>
+        📦 Empaque: $${empaque.toFixed(2)}<br/>
+        🔑 Llavero: ${llavero ? '$250.00' : '$0.00'}<br/>
+        <strong>Total estimado: $${totalConGanancia.toFixed(2)}</strong><br/>
+        <strong>💡 Sugerencia redondeada: $${sugerido.toFixed(0)}</strong><br/>
+        <button onclick="guardarPDF('${nombre}', this)">📄 Guardar como PDF</button>
+        <button onclick="guardarPedido('${nombre}', this)">💾 Guardar Pedido</button>
+      `;
+
+      document.getElementById('resultado').innerHTML = resumenHTML;
+
+      historial.push(resumenHTML);
+      renderHistorial();
+    }
+
+    function guardarPDF(nombre, boton) {
+      const element = boton.parentNode.cloneNode(true);
+      const header = document.createElement("h2");
+      header.innerText = "🧾 Pedido - Impresar";
+      element.insertBefore(header, element.firstChild);
+
+      const opt = {
+        margin: 0.5,
+        filename: `${nombre || "pedido"}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
+
+    function guardarPedido(nombre, boton) {
+      const resumen = boton.parentNode.innerHTML;
+      const pedido = { nombre, resumen };
+      pedidos.push(pedido);
+
+      document.getElementById('alertaGuardado').style.display = "block";
+      setTimeout(() => document.getElementById('alertaGuardado').style.display = "none", 3000);
+    }
+
+    function renderHistorial() {
+      const div = document.getElementById("historialLista");
+      div.innerHTML = "";
+      historial.forEach((item, index) => {
+        const h = document.createElement("div");
+        h.className = "historial-item";
+        h.innerHTML = item + `<br/><button onclick="eliminarHistorial(${index})">❌ Eliminar</button>`;
+        div.appendChild(h);
+      });
+    }
+
+    function eliminarHistorial(index) {
+      historial.splice(index, 1);
+      renderHistorial();
+    }
+
+    function borrarHistorial() {
+      historial = [];
+      renderHistorial();
+    }
+
+    function verPedidos() {
+      const lista = document.getElementById('listaPedidos');
+      lista.innerHTML = "";
+      pedidos.forEach((p, i) => {
+        const div = document.createElement("div");
+        div.innerHTML = `<strong>${p.nombre}</strong><br/>${p.resumen}<hr/>`;
+        lista.appendChild(div);
+      });
+      document.getElementById('modalPedidos').style.display = "block";
+      document.getElementById('overlay').style.display = "block";
+    }
+
+    function cerrarModal() {
+      document.getElementById('modalPedidos').style.display = "none";
+      document.getElementById('overlay').style.display = "none";
+    }
+  </script>
+</body>
+</html>
